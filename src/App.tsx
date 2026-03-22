@@ -7,12 +7,11 @@ import {
   searchCities,
   PRAYER_LABELS,
   METHOD_NAMES,
-  type PrayerName,
   type MethodKey,
   type CalcResult,
 } from './lib/prayer';
 
-// ---- Types ----
+/* ---- Types ---- */
 
 interface Settings {
   lat: number;
@@ -24,7 +23,7 @@ interface Settings {
   theme: 'light' | 'dark';
 }
 
-const DEFAULT_SETTINGS: Settings = {
+const DEFAULT: Settings = {
   lat: 43.8563,
   lng: 18.4131,
   city: 'Sarajevo',
@@ -34,21 +33,21 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'light',
 };
 
-function loadSettings(): Settings {
+function load(): Settings {
   try {
-    const saved = localStorage.getItem('prayer-settings');
-    if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+    const s = localStorage.getItem('pt-settings');
+    if (s) return { ...DEFAULT, ...JSON.parse(s) };
   } catch {}
-  return DEFAULT_SETTINGS;
+  return DEFAULT;
 }
 
-function saveSettings(s: Settings) {
-  localStorage.setItem('prayer-settings', JSON.stringify(s));
+function save(s: Settings) {
+  localStorage.setItem('pt-settings', JSON.stringify(s));
 }
 
-// ---- Icons ----
+/* ---- Tiny SVG icons ---- */
 
-const IconPin = () => (
+const IcoPin = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
       d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -57,7 +56,7 @@ const IconPin = () => (
   </svg>
 );
 
-const IconGear = () => (
+const IcoGear = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
       d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -66,19 +65,13 @@ const IconGear = () => (
   </svg>
 );
 
-const IconX = () => (
+const IcoX = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
   </svg>
 );
 
-const IconMountain = () => (
-  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20l6-10 4 6 2-3 4 7H4z" />
-  </svg>
-);
-
-const IconSun = () => (
+const IcoSun = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="5" strokeWidth={2} />
     <path strokeLinecap="round" strokeWidth={2}
@@ -86,387 +79,294 @@ const IconSun = () => (
   </svg>
 );
 
-const IconMoon = () => (
+const IcoMoon = () => (
   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
       d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
   </svg>
 );
 
-const IconKaaba = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor">
-    <rect x="6" y="6" width="12" height="12" rx="1" />
+const IcoMtn = () => (
+  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20l6-10 4 6 2-3 4 7H4z" />
   </svg>
 );
 
-// ---- Format date ----
+const IcoKaaba = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1" /></svg>
+);
 
-function formatDate(d: Date): string {
+/* ---- Helpers ---- */
+
+function fmtDate(d: Date): string {
   return d.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 }
 
-// ---- App ----
+function fmtSunnah(d: Date): string {
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+/* ---- App ---- */
 
 export default function App() {
-  const [settings, setSettings] = useState<Settings>(loadSettings);
-  const [prayerData, setPrayerData] = useState<CalcResult | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [citySearch, setCitySearch] = useState('');
-  const [searchResults, setSearchResults] = useState<
-    { name: string; lat: number; lng: number; country: string }[]
-  >([]);
+  const [cfg, setCfg] = useState<Settings>(load);
+  const [data, setData] = useState<CalcResult | null>(null);
+  const [modal, setModal] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<{ name: string; lat: number; lng: number; country: string }[]>([]);
   const [searching, setSearching] = useState(false);
 
   // Apply theme
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', settings.theme);
-  }, [settings.theme]);
+    document.documentElement.setAttribute('data-theme', cfg.theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      'content', cfg.theme === 'dark' ? '#121212' : '#ffffff'
+    );
+  }, [cfg.theme]);
 
-  // Calculate prayer times
-  const update = useCallback(() => {
-    const result = calcPrayerTimes({
-      lat: settings.lat,
-      lng: settings.lng,
-      date: new Date(),
-      method: settings.method,
-      madhab: settings.madhab,
-      elevation: settings.elevation,
-    });
-    setPrayerData(result);
-  }, [settings]);
+  // Calc
+  const calc = useCallback(() => {
+    setData(calcPrayerTimes({
+      lat: cfg.lat, lng: cfg.lng, date: new Date(),
+      method: cfg.method, madhab: cfg.madhab, elevation: cfg.elevation,
+    }));
+  }, [cfg]);
 
-  useEffect(() => {
-    update();
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
-  }, [update]);
-
-  // Save settings
-  useEffect(() => {
-    saveSettings(settings);
-  }, [settings]);
+  useEffect(() => { calc(); const id = setInterval(calc, 1000); return () => clearInterval(id); }, [calc]);
+  useEffect(() => { save(cfg); }, [cfg]);
 
   // Geolocate
-  const geolocate = async () => {
-    setLoading(true);
+  const locate = async () => {
+    setBusy(true);
     try {
-      const pos = await new Promise<GeolocationPosition>((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-        })
+      const pos = await new Promise<GeolocationPosition>((ok, fail) =>
+        navigator.geolocation.getCurrentPosition(ok, fail, { enableHighAccuracy: true, timeout: 10000 })
       );
       const { latitude: lat, longitude: lng } = pos.coords;
-      const [city, elevation] = await Promise.all([
-        reverseGeocode(lat, lng),
-        fetchElevation(lat, lng),
-      ]);
+      const [city, elevation] = await Promise.all([reverseGeocode(lat, lng), fetchElevation(lat, lng)]);
       const method = autoSelectMethod(lat, lng);
-      setSettings((s) => ({ ...s, lat, lng, city, elevation, method }));
-    } catch {
-      alert('Could not get location. Please search for your city.');
-    }
-    setLoading(false);
+      setCfg(s => ({ ...s, lat, lng, city, elevation, method }));
+    } catch { alert('Could not detect location. Try searching for your city.'); }
+    setBusy(false);
   };
 
-  // City search
+  // Search
   useEffect(() => {
-    if (citySearch.length < 2) {
-      setSearchResults([]);
-      return;
-    }
+    if (q.length < 2) { setResults([]); return; }
     const t = setTimeout(async () => {
       setSearching(true);
-      const results = await searchCities(citySearch);
-      setSearchResults(results);
+      setResults(await searchCities(q));
       setSearching(false);
     }, 300);
     return () => clearTimeout(t);
-  }, [citySearch]);
+  }, [q]);
 
-  const pickCity = async (city: { name: string; lat: number; lng: number }) => {
-    setLoading(true);
-    const elevation = await fetchElevation(city.lat, city.lng);
-    const method = autoSelectMethod(city.lat, city.lng);
-    setSettings((s) => ({
-      ...s,
-      lat: city.lat,
-      lng: city.lng,
-      city: city.name,
-      elevation,
-      method,
-    }));
-    setCitySearch('');
-    setSearchResults([]);
-    setLoading(false);
-    setShowSettings(false);
+  const pick = async (c: { name: string; lat: number; lng: number }) => {
+    setBusy(true);
+    const elevation = await fetchElevation(c.lat, c.lng);
+    const method = autoSelectMethod(c.lat, c.lng);
+    setCfg(s => ({ ...s, lat: c.lat, lng: c.lng, city: c.name, elevation, method }));
+    setQ(''); setResults([]); setBusy(false); setModal(false);
   };
 
-  if (!prayerData) {
-    return <div className="loading-screen">Loading...</div>;
-  }
+  if (!data) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: 'var(--text-muted)' }}>Loading…</div>;
 
-  const { times, nextPrayer, currentPrayer, countdown, progressPercent, qibla } =
-    prayerData;
+  const { times, nextPrayer, countdown, progressPercent, qibla, sunnahTimes } = data;
 
   return (
-    <div className="app">
+    <div className="page">
       {/* Header */}
-      <header className="header">
-        <button className="header-location" onClick={() => setShowSettings(true)}>
-          <IconPin />
-          {settings.city}
-        </button>
-        <div className="header-actions">
-          <button
-            className="icon-btn"
-            onClick={() =>
-              setSettings((s) => ({
-                ...s,
-                theme: s.theme === 'light' ? 'dark' : 'light',
-              }))
-            }
-            title="Toggle theme"
-          >
-            {settings.theme === 'light' ? <IconMoon /> : <IconSun />}
+      <header className="site-header">
+        <span className="site-title">Prayer Times</span>
+        <div className="header-right">
+          <button className="hdr-btn" onClick={() => setCfg(s => ({ ...s, theme: s.theme === 'light' ? 'dark' : 'light' }))}>
+            {cfg.theme === 'light' ? <IcoMoon /> : <IcoSun />}
           </button>
-          <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">
-            <IconGear />
+          <button className="hdr-btn" onClick={() => setModal(true)}>
+            <IcoGear />
           </button>
         </div>
       </header>
 
+      {/* Location */}
+      <div className="location-bar">
+        <div>
+          <div className="loc-name"><IcoPin />{cfg.city}</div>
+          <div className="loc-meta">{cfg.lat.toFixed(2)}°, {cfg.lng.toFixed(2)}° · {Math.round(cfg.elevation)}m</div>
+        </div>
+        <button onClick={() => setModal(true)}>Change</button>
+      </div>
+
       {/* Date */}
-      <div className="date-bar">{formatDate(new Date())}</div>
+      <div className="date-row">{fmtDate(new Date())}</div>
 
       {/* Countdown */}
-      <div className="countdown-section">
-        <div className="countdown-label">Time until</div>
-        <div className="countdown-prayer">{PRAYER_LABELS[nextPrayer]}</div>
-        <div className="countdown-timer">
-          <div className="countdown-digit-group">
-            <span className="countdown-digit">
-              {String(countdown.hours).padStart(2, '0')}
-            </span>
-            <span className="countdown-unit">hrs</span>
+      <div className="countdown-box">
+        <div className="cd-label">Time remaining until</div>
+        <div className="cd-prayer">{PRAYER_LABELS[nextPrayer]}</div>
+        <div className="cd-time">
+          <div className="cd-group">
+            <span className="cd-num">{String(countdown.hours).padStart(2, '0')}</span>
+            <span className="cd-unit">hrs</span>
           </div>
-          <span className="countdown-separator">:</span>
-          <div className="countdown-digit-group">
-            <span className="countdown-digit">
-              {String(countdown.minutes).padStart(2, '0')}
-            </span>
-            <span className="countdown-unit">min</span>
+          <span className="cd-sep">:</span>
+          <div className="cd-group">
+            <span className="cd-num">{String(countdown.minutes).padStart(2, '0')}</span>
+            <span className="cd-unit">min</span>
           </div>
-          <span className="countdown-separator">:</span>
-          <div className="countdown-digit-group">
-            <span className="countdown-digit">
-              {String(countdown.seconds).padStart(2, '0')}
-            </span>
-            <span className="countdown-unit">sec</span>
+          <span className="cd-sep">:</span>
+          <div className="cd-group">
+            <span className="cd-num">{String(countdown.seconds).padStart(2, '0')}</span>
+            <span className="cd-unit">sec</span>
           </div>
         </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${progressPercent}%` }} />
+        <div className="cd-progress">
+          <div className="cd-progress-fill" style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
 
-      {/* Prayer List */}
-      <div className="prayer-list">
-        {times.map((p) => (
-          <div
-            key={p.name}
-            className={`prayer-row ${p.isNext ? 'is-next' : ''} ${p.isPast ? 'is-past' : ''} ${
-              p.isCurrent ? 'is-current' : ''
-            }`}
-          >
-            <div className="prayer-left">
-              <div
-                className={`prayer-indicator ${
-                  p.isNext ? 'active' : p.isCurrent ? 'current' : 'empty'
-                }`}
-              />
-              <div>
-                <div className="prayer-name">{p.label}</div>
-                {p.elevationOffset !== 0 && (
-                  <div className="prayer-elevation">
-                    <IconMountain />
-                    <span>
-                      {p.elevationOffset > 0 ? '+' : ''}
-                      {p.elevationOffset} min elevation
-                    </span>
+      {/* Prayer table */}
+      <table className="prayer-table">
+        <tbody>
+          {times.map(p => (
+            <tr key={p.name} className={p.isNext ? 'is-next' : p.isPast ? 'is-past' : ''}>
+              <td>
+                <div className="p-name-wrap">
+                  <div className={`p-dot ${p.isNext ? 'next' : p.isCurrent ? 'current' : 'empty'}`} />
+                  <div>
+                    <div className="p-label">{p.label}</div>
+                    {p.elevationOffset !== 0 && (
+                      <div className="p-elev">
+                        <IcoMtn />
+                        {p.elevationOffset > 0 ? '+' : ''}{p.elevationOffset} min
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="prayer-time">{p.displayTime}</div>
-          </div>
-        ))}
+                </div>
+              </td>
+              <td>{p.displayTime}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Sunnah times */}
+      <div className="sunnah-section">
+        <div className="sunnah-item">
+          <div className="sunnah-label">Middle of Night</div>
+          <div className="sunnah-time">{fmtSunnah(sunnahTimes.middleOfTheNight)}</div>
+        </div>
+        <div className="sunnah-item">
+          <div className="sunnah-label">Last Third</div>
+          <div className="sunnah-time">{fmtSunnah(sunnahTimes.lastThirdOfTheNight)}</div>
+        </div>
       </div>
 
       {/* Footer */}
-      <footer className="footer">
-        <div className="footer-method">
-          {METHOD_NAMES[settings.method]} · {settings.madhab === 'hanafi' ? 'Hanafi' : "Shafi'i"} ·{' '}
-          {Math.round(settings.elevation)}m
+      <footer className="site-footer">
+        <div className="footer-line">
+          {METHOD_NAMES[cfg.method]} · {cfg.madhab === 'hanafi' ? 'Hanafi' : "Shafi'i"}
         </div>
-        <div className="footer-qibla">
-          <IconKaaba />
-          Qibla: {qibla}° from North
+        <div className="footer-line">
+          <span className="footer-qibla"><IcoKaaba /> Qibla: {qibla}° from North</span>
         </div>
       </footer>
 
       {/* Settings Modal */}
-      {showSettings && (
-        <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="modal-title">Settings</h2>
-              <button className="modal-close" onClick={() => setShowSettings(false)}>
-                <IconX />
-              </button>
+      {modal && (
+        <div className="modal-backdrop" onClick={() => setModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h2>Settings</h2>
+              <button className="modal-close" onClick={() => setModal(false)}><IcoX /></button>
             </div>
             <div className="modal-body">
+
               {/* Theme */}
-              <div className="settings-section">
-                <div className="section-label">Theme</div>
-                <div className="theme-toggle">
-                  <button
-                    className={`theme-option ${settings.theme === 'light' ? 'active' : ''}`}
-                    onClick={() => setSettings((s) => ({ ...s, theme: 'light' }))}
-                  >
-                    <IconSun /> Light
-                  </button>
-                  <button
-                    className={`theme-option ${settings.theme === 'dark' ? 'active' : ''}`}
-                    onClick={() => setSettings((s) => ({ ...s, theme: 'dark' }))}
-                  >
-                    <IconMoon /> Dark
-                  </button>
+              <div className="field">
+                <div className="field-label">Theme</div>
+                <div className="theme-row">
+                  <button className={`theme-btn ${cfg.theme === 'light' ? 'active' : ''}`}
+                    onClick={() => setCfg(s => ({ ...s, theme: 'light' }))}><IcoSun /> Light</button>
+                  <button className={`theme-btn ${cfg.theme === 'dark' ? 'active' : ''}`}
+                    onClick={() => setCfg(s => ({ ...s, theme: 'dark' }))}><IcoMoon /> Dark</button>
                 </div>
               </div>
 
               {/* Location */}
-              <div className="settings-section">
-                <div className="section-label">Location</div>
-                <button className="locate-btn" onClick={geolocate} disabled={loading}>
-                  {loading ? (
-                    'Detecting...'
-                  ) : (
-                    <>
-                      <IconPin /> Use My Location
-                    </>
-                  )}
+              <div className="field">
+                <div className="field-label">Location</div>
+                <button className="btn-locate" onClick={locate} disabled={busy}>
+                  {busy ? 'Detecting…' : <><IcoPin /> Use My Location</>}
                 </button>
-                <input
-                  type="text"
-                  className="search-input"
-                  value={citySearch}
-                  onChange={(e) => setCitySearch(e.target.value)}
-                  placeholder="Search city..."
-                />
-                {searching && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Searching...
-                  </div>
-                )}
-                {searchResults.length > 0 && (
-                  <div className="search-results">
-                    {searchResults.map((c, i) => (
-                      <button key={i} className="search-result-item" onClick={() => pickCity(c)}>
-                        {c.name}
-                        <span className="search-result-country">{c.country}</span>
+                <input className="input-search" value={q} onChange={e => setQ(e.target.value)}
+                  placeholder="Search city…" />
+                {searching && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Searching…</div>}
+                {results.length > 0 && (
+                  <div className="search-list">
+                    {results.map((c, i) => (
+                      <button key={i} className="search-item" onClick={() => pick(c)}>
+                        {c.name}<span className="search-country">{c.country}</span>
                       </button>
                     ))}
                   </div>
                 )}
-                <div className="current-location-info">
-                  Current: <span>{settings.city}</span> ({settings.lat.toFixed(2)},{' '}
-                  {settings.lng.toFixed(2)})
-                </div>
+                <div className="current-loc">Current: {cfg.city} ({cfg.lat.toFixed(2)}, {cfg.lng.toFixed(2)})</div>
               </div>
 
               {/* Elevation */}
-              <div className="settings-section">
-                <div className="section-label">Elevation</div>
-                <div className="elevation-control">
-                  <button
-                    className="elev-btn"
-                    onClick={() =>
-                      setSettings((s) => ({ ...s, elevation: Math.max(0, s.elevation - 50) }))
-                    }
-                  >
-                    −
-                  </button>
-                  <div className="elev-value">
-                    <span className="elev-number">{Math.round(settings.elevation)}</span>
-                    <span className="elev-unit">m</span>
-                  </div>
-                  <button
-                    className="elev-btn"
-                    onClick={() => setSettings((s) => ({ ...s, elevation: s.elevation + 50 }))}
-                  >
-                    +
-                  </button>
+              <div className="field">
+                <div className="field-label">Elevation</div>
+                <div className="elev-row">
+                  <button className="elev-btn" onClick={() => setCfg(s => ({ ...s, elevation: Math.max(0, s.elevation - 50) }))}>−</button>
+                  <div className="elev-val">{Math.round(cfg.elevation)} <span className="elev-m">m</span></div>
+                  <button className="elev-btn" onClick={() => setCfg(s => ({ ...s, elevation: s.elevation + 50 }))}>+</button>
                 </div>
                 <div className="elev-hint">Affects Sunrise & Maghrib times</div>
               </div>
 
               {/* Method */}
-              <div className="settings-section">
-                <div className="section-label">Calculation Method</div>
-                <div className="method-grid">
-                  {(Object.keys(METHOD_NAMES) as MethodKey[]).map((key) => (
-                    <button
-                      key={key}
-                      className={`method-btn ${settings.method === key ? 'active' : ''}`}
-                      onClick={() => setSettings((s) => ({ ...s, method: key }))}
-                    >
-                      {METHOD_NAMES[key]}
-                    </button>
+              <div className="field">
+                <div className="field-label">Calculation Method</div>
+                <div className="opt-grid">
+                  {(Object.keys(METHOD_NAMES) as MethodKey[]).map(k => (
+                    <button key={k} className={`opt-btn ${cfg.method === k ? 'active' : ''}`}
+                      onClick={() => setCfg(s => ({ ...s, method: k }))}>{METHOD_NAMES[k]}</button>
                   ))}
                 </div>
               </div>
 
               {/* Madhab */}
-              <div className="settings-section">
-                <div className="section-label">Asr Calculation</div>
+              <div className="field">
+                <div className="field-label">Asr Calculation</div>
                 <div className="madhab-grid">
-                  <button
-                    className={`madhab-btn ${settings.madhab === 'shafi' ? 'active' : ''}`}
-                    onClick={() => setSettings((s) => ({ ...s, madhab: 'shafi' }))}
-                  >
-                    <div className="madhab-name">Shafi'i</div>
-                    <div className="madhab-sub">Standard</div>
+                  <button className={`madhab-btn ${cfg.madhab === 'shafi' ? 'active' : ''}`}
+                    onClick={() => setCfg(s => ({ ...s, madhab: 'shafi' }))}>
+                    <div className="madhab-main">Shafi'i / Maliki / Hanbali</div>
+                    <div className="madhab-sub">Standard (shadow = object)</div>
                   </button>
-                  <button
-                    className={`madhab-btn ${settings.madhab === 'hanafi' ? 'active' : ''}`}
-                    onClick={() => setSettings((s) => ({ ...s, madhab: 'hanafi' }))}
-                  >
-                    <div className="madhab-name">Hanafi</div>
-                    <div className="madhab-sub">Later Asr</div>
+                  <button className={`madhab-btn ${cfg.madhab === 'hanafi' ? 'active' : ''}`}
+                    onClick={() => setCfg(s => ({ ...s, madhab: 'hanafi' }))}>
+                    <div className="madhab-main">Hanafi</div>
+                    <div className="madhab-sub">Later Asr (shadow = 2× object)</div>
                   </button>
                 </div>
               </div>
 
               {/* Info */}
-              <div className="settings-section">
-                <div className="info-box">
-                  <h4>About calculations</h4>
-                  <p>
-                    Prayer times are calculated locally using astronomical algorithms. 
-                    Elevation affects Sunrise and Maghrib — at higher elevations you can 
-                    see the sun earlier in the morning and later in the evening because 
-                    you're looking over the horizon. This adjustment is calculated using 
-                    the formula: 0.0347 × √(elevation in meters).
-                  </p>
+              <div className="field">
+                <div className="info-note">
+                  <strong>About the calculations:</strong> Prayer times are computed using the
+                  battle-tested <em>adhan</em> library. Elevation adjusts Sunrise and Maghrib —
+                  at higher altitudes you see the sun earlier in the morning and later in the evening.
+                  At latitudes above 40°, Fajr and Isha angles are adaptively reduced to match
+                  regional Islamic authorities.
                 </div>
               </div>
+
             </div>
           </div>
         </div>
