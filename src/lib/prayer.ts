@@ -21,18 +21,9 @@ export const PRAYER_LABELS: Record<PrayerName, string> = {
 };
 
 export type MethodKey =
-  | 'MWL'
-  | 'Egyptian'
-  | 'Karachi'
-  | 'UmmAlQura'
-  | 'Dubai'
-  | 'Qatar'
-  | 'Kuwait'
-  | 'MoonsightingCommittee'
-  | 'Singapore'
-  | 'Turkey'
-  | 'Tehran'
-  | 'ISNA';
+  | 'MWL' | 'Egyptian' | 'Karachi' | 'UmmAlQura' | 'Dubai'
+  | 'Qatar' | 'Kuwait' | 'MoonsightingCommittee' | 'Singapore'
+  | 'Turkey' | 'Tehran' | 'ISNA';
 
 export const METHOD_NAMES: Record<MethodKey, string> = {
   MWL: 'Muslim World League',
@@ -110,15 +101,6 @@ function getElevationOffset(elevation: number, latitude: number): { sunrise: num
   return { sunrise: -capped, maghrib: capped };
 }
 
-export interface CalcOptions {
-  lat: number;
-  lng: number;
-  date: Date;
-  method: MethodKey;
-  madhab: 'shafi' | 'hanafi';
-  elevation?: number;
-}
-
 export interface PrayerTimeResult {
   name: PrayerName;
   label: string;
@@ -127,7 +109,6 @@ export interface PrayerTimeResult {
   isPast: boolean;
   isCurrent: boolean;
   isNext: boolean;
-  elevationOffset: number;
 }
 
 export interface CalcResult {
@@ -143,12 +124,20 @@ export interface CalcResult {
   };
 }
 
+export interface CalcOptions {
+  lat: number;
+  lng: number;
+  date: Date;
+  method: MethodKey;
+  madhab: 'shafi' | 'hanafi';
+  elevation?: number;
+}
+
 export function calcPrayerTimes(options: CalcOptions): CalcResult {
   const { lat, lng, date, method, madhab, elevation = 0 } = options;
 
   const coords = new Coordinates(lat, lng);
   const params = getBaseParams(method);
-
   params.madhab = madhab === 'hanafi' ? Madhab.Hanafi : Madhab.Shafi;
   params.fajrAngle = getAdaptiveFajrAngle(params.fajrAngle, lat);
   params.ishaAngle = getAdaptiveIshaAngle(params.ishaAngle, lat);
@@ -158,62 +147,77 @@ export function calcPrayerTimes(options: CalcOptions): CalcResult {
   const elevOffsets = getElevationOffset(elevation, lat);
 
   const now = new Date();
-  const times: { name: PrayerName; time: Date; elevationOffset: number }[] = [
-    { name: 'fajr', time: prayerTimes.fajr, elevationOffset: 0 },
-    { name: 'sunrise', time: prayerTimes.sunrise, elevationOffset: elevOffsets.sunrise },
-    { name: 'dhuhr', time: prayerTimes.dhuhr, elevationOffset: 0 },
-    { name: 'asr', time: prayerTimes.asr, elevationOffset: 0 },
-    { name: 'maghrib', time: prayerTimes.maghrib, elevationOffset: elevOffsets.maghrib },
-    { name: 'isha', time: prayerTimes.isha, elevationOffset: 0 },
+
+  const rawTimes: { name: PrayerName; time: Date }[] = [
+    { name: 'fajr', time: prayerTimes.fajr },
+    { name: 'sunrise', time: new Date(prayerTimes.sunrise.getTime() + elevOffsets.sunrise * 60000) },
+    { name: 'dhuhr', time: prayerTimes.dhuhr },
+    { name: 'asr', time: prayerTimes.asr },
+    { name: 'maghrib', time: new Date(prayerTimes.maghrib.getTime() + elevOffsets.maghrib * 60000) },
+    { name: 'isha', time: prayerTimes.isha },
   ];
 
-  times.forEach(t => {
-    if (t.elevationOffset !== 0) {
-      t.time = new Date(t.time.getTime() + t.elevationOffset * 60000);
-    }
-  });
+  // Find next prayer — if all passed, next is tomorrow's Fajr
+  let nextIdx = rawTimes.findIndex(t => t.time > now);
+  let allPassed = false;
+  let nextPrayerTime: Date;
 
-  let nextIdx = times.findIndex(t => t.time > now);
-  if (nextIdx === -1) nextIdx = 0;
-  const currentIdx = nextIdx > 0 ? nextIdx - 1 : null;
+  if (nextIdx === -1) {
+    allPassed = true;
+    nextIdx = 0;
+    const tomorrow = new Date(date);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowParams = getBaseParams(method);
+    tomorrowParams.madhab = madhab === 'hanafi' ? Madhab.Hanafi : Madhab.Shafi;
+    tomorrowParams.fajrAngle = getAdaptiveFajrAngle(tomorrowParams.fajrAngle, lat);
+    tomorrowParams.ishaAngle = getAdaptiveIshaAngle(tomorrowParams.ishaAngle, lat);
+    const tomorrowPrayers = new PrayerTimes(coords, tomorrow, tomorrowParams);
+    nextPrayerTime = tomorrowPrayers.fajr;
+  } else {
+    nextPrayerTime = rawTimes[nextIdx].time;
+  }
+
+  // Current prayer: the one before next, or Isha if all passed
+  const currentIdx = allPassed
+    ? rawTimes.length - 1
+    : nextIdx > 0 ? nextIdx - 1 : null;
 
   const formatTime = (d: Date) =>
     d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  const results: PrayerTimeResult[] = times.map((t, i) => ({
+  const times: PrayerTimeResult[] = rawTimes.map((t, i) => ({
     name: t.name,
     label: PRAYER_LABELS[t.name],
     time: t.time,
     displayTime: formatTime(t.time),
-    isPast: t.time <= now && i !== currentIdx,
+    isPast: allPassed ? i !== currentIdx : (t.time <= now && i !== currentIdx),
     isCurrent: i === currentIdx,
-    isNext: i === nextIdx,
-    elevationOffset: Math.round(t.elevationOffset),
+    isNext: allPassed ? false : i === nextIdx,
   }));
 
-  const nextTime = times[nextIdx].time;
-  const diff = Math.max(0, nextTime.getTime() - now.getTime());
-  const hours = Math.floor(diff / 3600000);
-  const minutes = Math.floor((diff % 3600000) / 60000);
-  const seconds = Math.floor((diff % 60000) / 1000);
+  // Countdown
+  const diff = Math.max(0, nextPrayerTime.getTime() - now.getTime());
+  const totalSecs = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSecs / 3600);
+  const minutes = Math.floor((totalSecs % 3600) / 60);
+  const seconds = totalSecs % 60;
 
+  // Progress
   let progressPercent = 0;
   if (currentIdx !== null) {
-    const currentTime = times[currentIdx].time;
-    const totalDuration = nextTime.getTime() - currentTime.getTime();
+    const currentTime = rawTimes[currentIdx].time;
+    const total = nextPrayerTime.getTime() - currentTime.getTime();
     const elapsed = now.getTime() - currentTime.getTime();
-    progressPercent = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+    if (total > 0) progressPercent = Math.min(100, Math.max(0, (elapsed / total) * 100));
   }
 
-  const qibla = calculateQibla(lat, lng);
-
   return {
-    times: results,
-    nextPrayer: times[nextIdx].name,
-    currentPrayer: currentIdx !== null ? times[currentIdx].name : null,
+    times,
+    nextPrayer: rawTimes[nextIdx].name,
+    currentPrayer: currentIdx !== null ? rawTimes[currentIdx].name : null,
     countdown: { hours, minutes, seconds },
     progressPercent,
-    qibla,
+    qibla: calculateQibla(lat, lng),
     sunnahTimes: {
       middleOfTheNight: sunnahTimes.middleOfTheNight,
       lastThirdOfTheNight: sunnahTimes.lastThirdOfTheNight,
@@ -222,66 +226,50 @@ export function calcPrayerTimes(options: CalcOptions): CalcResult {
 }
 
 function calculateQibla(lat: number, lng: number): number {
-  const kaabaLat = 21.4225;
-  const kaabaLng = 39.8262;
+  const kaabaLat = 21.4225, kaabaLng = 39.8262;
   const latRad = lat * Math.PI / 180;
   const kaabaLatRad = kaabaLat * Math.PI / 180;
-  const kaabaLngRad = kaabaLng * Math.PI / 180;
-  const lngRad = lng * Math.PI / 180;
-  const x = Math.sin(kaabaLngRad - lngRad);
-  const y = Math.cos(latRad) * Math.tan(kaabaLatRad) - Math.sin(latRad) * Math.cos(kaabaLngRad - lngRad);
-  let qibla = Math.atan2(x, y) * 180 / Math.PI;
-  if (qibla < 0) qibla += 360;
-  return Math.round(qibla * 10) / 10;
+  const dLng = (kaabaLng - lng) * Math.PI / 180;
+  const x = Math.sin(dLng);
+  const y = Math.cos(latRad) * Math.tan(kaabaLatRad) - Math.sin(latRad) * Math.cos(dLng);
+  let q = Math.atan2(x, y) * 180 / Math.PI;
+  if (q < 0) q += 360;
+  return Math.round(q * 10) / 10;
 }
 
 export async function fetchElevation(lat: number, lng: number): Promise<number> {
   try {
-    const res = await fetch(
-      `https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`
-    );
-    const data = await res.json();
-    return data.elevation?.[0] ?? 0;
-  } catch {
-    return 0;
-  }
+    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lng}`);
+    const d = await r.json();
+    return d.elevation?.[0] ?? 0;
+  } catch { return 0; }
 }
 
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
   try {
-    const res = await fetch(
+    const r = await fetch(
       `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
       { headers: { 'User-Agent': 'PrayerTimesApp/1.0' } }
     );
-    const data = await res.json();
-    return (
-      data.address?.city ||
-      data.address?.town ||
-      data.address?.village ||
-      data.address?.municipality ||
-      data.address?.county ||
-      'Unknown'
-    );
-  } catch {
-    return 'Unknown';
-  }
+    const d = await r.json();
+    return d.address?.city || d.address?.town || d.address?.village
+      || d.address?.municipality || d.address?.county || 'Unknown';
+  } catch { return 'Unknown'; }
 }
 
 export async function searchCities(query: string): Promise<{ name: string; lat: number; lng: number; country: string }[]> {
   if (query.length < 2) return [];
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=8&addressdetails=1`,
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`,
       { headers: { 'User-Agent': 'PrayerTimesApp/1.0' } }
     );
-    const data = await res.json();
-    return data.map((item: { display_name: string; lat: string; lon: string; address?: { country?: string } }) => ({
-      name: item.display_name.split(',')[0],
-      lat: parseFloat(item.lat),
-      lng: parseFloat(item.lon),
-      country: item.address?.country || '',
+    const d = await r.json();
+    return d.map((i: { display_name: string; lat: string; lon: string; address?: { country?: string } }) => ({
+      name: i.display_name.split(',')[0],
+      lat: parseFloat(i.lat),
+      lng: parseFloat(i.lon),
+      country: i.address?.country || '',
     }));
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
